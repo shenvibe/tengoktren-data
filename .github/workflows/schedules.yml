@@ -1,0 +1,38 @@
+name: Update official timetables
+on:
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: timetable-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and validate official schedules
+        run: python3 scripts/update-schedules.py
+      - name: Record successful check
+        run: |
+          python3 - <<'PYCODE'
+          import json, datetime
+          from pathlib import Path
+          data=json.loads(Path('dist/data.json').read_text())
+          Path('status.json').write_text(json.dumps({'checked':datetime.datetime.now(datetime.timezone.utc).isoformat(),'schedule_date':data['downloaded'],'routes':len(data['routes']),'trips':len(data['trips'])})+'\n')
+          PYCODE
+      - name: Publish validated data
+        run: |
+          git config user.name 'TengokTren schedules'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dist/data.json dist/index.html status.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Check official train schedules'
+            git push
+          fi
